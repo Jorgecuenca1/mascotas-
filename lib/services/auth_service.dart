@@ -7,7 +7,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'local_storage_service.dart';
 
 class AuthService {
-  static const _base = 'http://localhost:8000/';
+  static const _base = 'https://vacunacion.corpofuturo.org/';
 
   /// Intenta hacer login online, si falla permite offline
   static Future<Map<String, dynamic>> login(String user, String pass) async {
@@ -18,22 +18,22 @@ class AuthService {
       if (connectivity != ConnectivityResult.none) {
         // Intentar login online
         try {
-          final resp = await http.post(
-            Uri.parse('${_base}api-token-auth/'),
-            headers: {'Content-Type': 'application/json'},
-            body: json.encode({'username': user, 'password': pass}),
+        final resp = await http.post(
+          Uri.parse('${_base}api-token-auth/'),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({'username': user, 'password': pass}),
           ).timeout(Duration(seconds: 10));
-          
-          if (resp.statusCode == 200) {
-            final token = json.decode(resp.body)['token'] as String;
-            await LocalStorageService.saveToken(token);
-            await LocalStorageService.saveUserData(user, pass);
+        
+        if (resp.statusCode == 200) {
+          final token = json.decode(resp.body)['token'] as String;
+          await LocalStorageService.saveToken(token);
+          await LocalStorageService.saveUserData(user, pass);
             return {
               'success': true,
               'mode': 'online',
               'message': 'Login exitoso (online)'
             };
-          } else {
+        } else {
             // Si falla online, intentar offline
             return await _tryOfflineLogin(user, pass, 'Credenciales incorrectas en servidor');
           }
@@ -56,16 +56,16 @@ class AuthService {
 
   /// Intenta login offline con credenciales guardadas
   static Future<Map<String, dynamic>> _tryOfflineLogin(String user, String pass, String reason) async {
-    final storedData = await LocalStorageService.getUserData();
-    if (storedData != null && 
-        storedData['username'] == user && 
-        storedData['password'] == pass) {
+        final storedData = await LocalStorageService.getUserData();
+        if (storedData != null && 
+            storedData['username'] == user && 
+            storedData['password'] == pass) {
       return {
         'success': true,
         'mode': 'offline',
         'message': 'Login exitoso (modo offline)'
       };
-    } else {
+        } else {
       return {
         'success': false,
         'mode': 'offline',

@@ -9,7 +9,7 @@ import 'auth_service.dart';
 import 'local_storage_service.dart';
 
 class ResponsableService {
-  static const _base = 'http://localhost:8000/api/';
+  static const _base = 'https://vacunacion.corpofuturo.org/api/';
 
   // Obtener todos los responsables de una planilla
   static Future<List<Responsable>> fetchResponsables(int planillaId) async {
@@ -34,6 +34,9 @@ class ResponsableService {
     String nombre,
     String telefono,
     String finca,
+    String zona,
+    String nombreZona,
+    String loteVacuna,
     List<Map<String, dynamic>> mascotas,
   ) async {
     try {
@@ -41,14 +44,14 @@ class ResponsableService {
       final connectivity = await Connectivity().checkConnectivity();
       if (connectivity == ConnectivityResult.none) {
         print('❌ Sin conexión - guardando responsable offline');
-        await _saveOffline(planillaId, nombre, telefono, finca, mascotas);
+        await _saveOffline(planillaId, nombre, telefono, finca, zona, nombreZona, loteVacuna, mascotas);
         throw Exception('Sin conexión a internet');
       }
 
       final t = await AuthService.token;
       if (t == null || t.isEmpty) {
         print('❌ Sin token de autenticación - guardando responsable offline');
-        await _saveOffline(planillaId, nombre, telefono, finca, mascotas);
+        await _saveOffline(planillaId, nombre, telefono, finca, zona, nombreZona, loteVacuna, mascotas);
         throw Exception('Sin token de autenticación');
       }
 
@@ -56,10 +59,13 @@ class ResponsableService {
       print('📤 URL: ${_base}planillas/$planillaId/responsables/');
       print('📤 Token: ${t.substring(0, 10)}...');
       print('📤 Datos: ${json.encode({
-        'nombre': nombre,
-        'telefono': telefono,
-        'finca': finca,
-        'mascotas': mascotas,
+          'nombre': nombre,
+          'telefono': telefono,
+          'finca': finca,
+          'zona': zona,
+          'nombre_zona': nombreZona,
+          'lote_vacuna': loteVacuna,
+          'mascotas': mascotas,
       })}');
 
       // Usar multipart para enviar archivos de imagen
@@ -74,6 +80,9 @@ class ResponsableService {
       request.fields['nombre'] = nombre;
       request.fields['telefono'] = telefono;
       request.fields['finca'] = finca;
+      request.fields['zona'] = zona;
+      request.fields['nombre_zona'] = nombreZona;
+      request.fields['lote_vacuna'] = loteVacuna;
       
       // Enviar mascotas con fotos incluidas en JSON (Django ya maneja base64)
       request.fields['mascotas'] = json.encode(mascotas);
@@ -84,7 +93,7 @@ class ResponsableService {
       
       print('📥 Respuesta Django: ${resp.statusCode}');
       print('📥 Body: ${resp.body}');
-
+      
       if (resp.statusCode == 201) {
         print('✅ Responsable creado exitosamente en Django');
         try {
@@ -99,6 +108,9 @@ class ResponsableService {
             nombre: nombre,
             telefono: telefono,
             finca: finca,
+            zona: zona,
+            nombreZona: nombreZona,
+            loteVacuna: loteVacuna,
             creado: DateTime.now(),
             mascotas: mascotas.map((m) => Mascota.fromJson(m)).toList(),
           );
@@ -106,7 +118,7 @@ class ResponsableService {
       } else {
         print('❌ Error del servidor Django: ${resp.statusCode}');
         print('❌ Mensaje: ${resp.body}');
-        await _saveOffline(planillaId, nombre, telefono, finca, mascotas);
+        await _saveOffline(planillaId, nombre, telefono, finca, zona, nombreZona, loteVacuna, mascotas);
         throw Exception('Error del servidor: ${resp.statusCode} - ${resp.body}');
       }
     } catch (e) {
@@ -116,7 +128,7 @@ class ResponsableService {
           e.toString().contains('SocketException')) {
         
         print('🌐 Sin conexión a Django. Guardando offline: $nombre');
-        await _saveOffline(planillaId, nombre, telefono, finca, mascotas);
+        await _saveOffline(planillaId, nombre, telefono, finca, zona, nombreZona, loteVacuna, mascotas);
         
         // Retornar null para indicar que se guardó offline exitosamente
         return null;
@@ -126,7 +138,7 @@ class ResponsableService {
         
         // Solo guardar offline si no es un error de parsing exitoso
         if (!e.toString().contains('Error parseando respuesta Django')) {
-          await _saveOffline(planillaId, nombre, telefono, finca, mascotas);
+          await _saveOffline(planillaId, nombre, telefono, finca, zona, nombreZona, loteVacuna, mascotas);
         }
         
         rethrow;
@@ -140,12 +152,15 @@ class ResponsableService {
     String nombre,
     String telefono,
     String finca,
+    String zona,
+    String nombreZona,
+    String loteVacuna,
     List<Map<String, dynamic>> mascotas,
   ) async {
     print('💾 Guardando responsable offline: $nombre');
-    await LocalStorageService.savePendingResponsable(
-      planillaId, nombre, telefono, finca, mascotas,
-    );
+        await LocalStorageService.savePendingResponsable(
+          planillaId, nombre, telefono, finca, zona, nombreZona, loteVacuna, mascotas,
+        );
   }
 
   // Crear responsable offline (para uso directo)
@@ -154,9 +169,12 @@ class ResponsableService {
     String nombre,
     String telefono,
     String finca,
+    String zona,
+    String nombreZona,
+    String loteVacuna,
     List<Map<String, dynamic>> mascotas,
   ) async {
-    await _saveOffline(planillaId, nombre, telefono, finca, mascotas);
+    await _saveOffline(planillaId, nombre, telefono, finca, zona, nombreZona, loteVacuna, mascotas);
   }
 
   // Verificar el estado de la conexión y mostrar información útil

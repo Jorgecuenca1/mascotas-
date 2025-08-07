@@ -7,7 +7,7 @@ import 'auth_service.dart';
 import 'local_storage_service.dart';
 
 class PlanillaService {
-  static const _base = 'http://localhost:8000/api/';
+  static const _base = 'https://vacunacion.corpofuturo.org/api/';
 
   /// Obtiene planillas (online con fallback a offline)
   static Future<List<Planilla>> fetchPlanillas() async {

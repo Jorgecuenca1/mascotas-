@@ -47,6 +47,9 @@ class LocalStorageService {
     String nombre,
     String telefono,
     String finca,
+    String zona,
+    String nombreZona,
+    String loteVacuna,
     List<Map<String, dynamic>> mascotas,
   ) async {
     final prefs = await SharedPreferences.getInstance();
@@ -57,6 +60,9 @@ class LocalStorageService {
       'nombre': nombre,
       'telefono': telefono,
       'finca': finca,
+      'zona': zona,
+      'nombre_zona': nombreZona,
+      'lote_vacuna': loteVacuna,
       'mascotas': mascotas,
       'timestamp': DateTime.now().toIso8601String(),
     });
@@ -81,8 +87,8 @@ class LocalStorageService {
     
     // Validar que el índice esté en rango
     if (index >= 0 && index < pending.length) {
-      pending.removeAt(index);
-      await prefs.setString(_pendingResponsablesKey, json.encode(pending));
+    pending.removeAt(index);
+    await prefs.setString(_pendingResponsablesKey, json.encode(pending));
     } else {
       print('⚠️ Índice fuera de rango: $index, lista tiene ${pending.length} elementos');
     }

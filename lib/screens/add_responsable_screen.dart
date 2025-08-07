@@ -23,6 +23,9 @@ class _AddResponsableScreenState extends State<AddResponsableScreen> {
   final _nombreController = TextEditingController();
   final _telefonoController = TextEditingController();
   final _fincaController = TextEditingController();
+  String _zonaSeleccionada = 'vereda'; // Nuevo campo
+  final _nombreZonaController = TextEditingController(); // Nuevo campo
+  final _loteVacunaController = TextEditingController(); // Nuevo campo
   
   // Campos de la mascota
   final _mascotaNombreController = TextEditingController();
@@ -161,7 +164,11 @@ class _AddResponsableScreenState extends State<AddResponsableScreen> {
     if (!_formKey.currentState!.validate()) return;
     if (_mascotas.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Agregue al menos una mascota')),
+        const SnackBar(
+          content: Text('⚠️ Debe agregar al menos una mascota a la lista antes de guardar el responsable'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 4),
+        ),
       );
       return;
     }
@@ -174,6 +181,9 @@ class _AddResponsableScreenState extends State<AddResponsableScreen> {
         _nombreController.text.trim(),
         _telefonoController.text.trim(),
         _fincaController.text.trim(),
+        _zonaSeleccionada,
+        _nombreZonaController.text.trim(),
+        _loteVacunaController.text.trim(),
         _mascotas,
       );
       
@@ -280,6 +290,60 @@ class _AddResponsableScreenState extends State<AddResponsableScreen> {
                           return null;
                         },
                       ),
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<String>(
+                        value: _zonaSeleccionada,
+                        decoration: const InputDecoration(
+                          labelText: 'Tipo de Zona *',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 'vereda', child: Text('Vereda')),
+                          DropdownMenuItem(value: 'centro poblado', child: Text('Centro Poblado')),
+                          DropdownMenuItem(value: 'barrio', child: Text('Barrio')),
+                        ],
+                        onChanged: (value) {
+                          setState(() {
+                            _zonaSeleccionada = value!;
+                          });
+                        },
+                        validator: (value) {
+                          if (value?.isEmpty ?? true) {
+                            return 'Campo requerido';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _nombreZonaController,
+                        decoration: const InputDecoration(
+                          labelText: 'Nombre de la Zona *',
+                          border: OutlineInputBorder(),
+                          hintText: 'Ej: La Esperanza, San Juan, etc.',
+                        ),
+                        validator: (value) {
+                          if (value?.trim().isEmpty ?? true) {
+                            return 'Campo requerido';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _loteVacunaController,
+                        decoration: const InputDecoration(
+                          labelText: 'Lote de Vacuna *',
+                          border: OutlineInputBorder(),
+                          hintText: 'Ej: LT001, VAC2023-001, etc.',
+                        ),
+                        validator: (value) {
+                          if (value?.trim().isEmpty ?? true) {
+                            return 'Campo requerido';
+                          }
+                          return null;
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -295,8 +359,29 @@ class _AddResponsableScreenState extends State<AddResponsableScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Agregar Mascota',
+                        'Datos de la Mascota',
                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.blue.shade200),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.info_outline, color: Colors.blue, size: 20),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Llene los datos y presione "Agregar Mascota a la Lista" para cada mascota',
+                                style: TextStyle(color: Colors.blue, fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 16),
                       TextFormField(
@@ -478,7 +563,12 @@ class _AddResponsableScreenState extends State<AddResponsableScreen> {
                       ElevatedButton.icon(
                         onPressed: _agregarMascota,
                         icon: const Icon(Icons.add),
-                        label: const Text('Agregar Mascota'),
+                        label: const Text('Agregar Mascota a la Lista'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
+                        ),
                       ),
                     ],
                   ),
@@ -505,11 +595,11 @@ class _AddResponsableScreenState extends State<AddResponsableScreen> {
                           return Card(
                             margin: const EdgeInsets.symmetric(vertical: 4),
                             child: ListTile(
-                              leading: Icon(
-                                Icons.pets,
-                                color: mascota['antecedente_vacunal'] == true ? Colors.green : Colors.orange,
-                              ),
-                              title: Text(mascota['nombre']),
+                            leading: Icon(
+                              Icons.pets,
+                              color: mascota['antecedente_vacunal'] == true ? Colors.green : Colors.orange,
+                            ),
+                            title: Text(mascota['nombre']),
                               subtitle: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -522,9 +612,9 @@ class _AddResponsableScreenState extends State<AddResponsableScreen> {
                                 ],
                               ),
                               isThreeLine: mascota['foto'] != null || (mascota['latitud'] != null && mascota['longitud'] != null),
-                              trailing: IconButton(
-                                icon: const Icon(Icons.delete, color: Colors.red),
-                                onPressed: () => _eliminarMascota(index),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete, color: Colors.red),
+                              onPressed: () => _eliminarMascota(index),
                               ),
                             ),
                           );

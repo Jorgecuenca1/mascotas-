@@ -1,11 +1,39 @@
-include ':app'
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        google()
+        mavenCentral()
+    }
+    plugins {
+        // Flutter plugin loader
+        id "dev.flutter.flutter-plugin-loader" version "1.0.0"
+        // Android & Kotlin
+        id "com.android.application"       version "8.1.0"  apply false
+        id "org.jetbrains.kotlin.android" version "1.8.22" apply false
+    }
+}
 
-def localPropertiesFile = new File(rootProject.projectDir, "local.properties")
-def properties = new Properties()
+import java.util.Properties
 
-assert localPropertiesFile.exists()
-localPropertiesFile.withReader("UTF-8") { reader -> properties.load(reader) }
+// 1) Cargar flutter.sdk desde local.properties o FLUTTER_ROOT
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localProperties.load(new FileInputStream(localPropertiesFile))
+}
+def flutterSdkPath = localProperties.getProperty("flutter.sdk") ?: System.getenv("FLUTTER_ROOT")
+assert flutterSdkPath != null, "flutter.sdk no está definido en local.properties ni en FLUTTER_ROOT"
 
-def flutterSdkPath = properties.getProperty("flutter.sdk")
-assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
-apply from: "$flutterSdkPath/packages/flutter_tools/gradle/app_plugin_loader.gradle"
+// 2) Incluir el composite build de las herramientas de Flutter
+includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "mascotas"
+include ":app"

@@ -31,6 +31,9 @@ class PendingResponsable {
   final String nombre;
   final String telefono;
   final String finca;
+  final String zona;
+  final String nombreZona;
+  final String loteVacuna;
   final List<Map<String, dynamic>> mascotas;
 
   PendingResponsable({
@@ -38,6 +41,9 @@ class PendingResponsable {
     required this.nombre,
     required this.telefono,
     required this.finca,
+    required this.zona,
+    required this.nombreZona,
+    required this.loteVacuna,
     required this.mascotas,
   });
 
@@ -46,6 +52,9 @@ class PendingResponsable {
     'nombre': nombre,
     'telefono': telefono,
     'finca': finca,
+    'zona': zona,
+    'nombre_zona': nombreZona,
+    'lote_vacuna': loteVacuna,
     'mascotas': mascotas,
   };
 
@@ -54,6 +63,9 @@ class PendingResponsable {
     nombre: json['nombre'] as String,
     telefono: json['telefono'] as String,
     finca: json['finca'] as String,
+    zona: json['zona'] as String? ?? 'vereda',
+    nombreZona: json['nombre_zona'] as String? ?? '',
+    loteVacuna: json['lote_vacuna'] as String? ?? '',
     mascotas: (json['mascotas'] as List).cast<Map<String, dynamic>>(),
   );
 }
@@ -89,11 +101,14 @@ class SyncService {
     String nombre,
     String telefono,
     String finca,
+    String zona,
+    String nombreZona,
+    String loteVacuna,
     List<Map<String, dynamic>> mascotas,
   ) async {
     // Usar LocalStorageService para evitar duplicados
     await LocalStorageService.savePendingResponsable(
-      planillaId, nombre, telefono, finca, mascotas,
+      planillaId, nombre, telefono, finca, zona, nombreZona, loteVacuna, mascotas,
     );
     print('Responsable encolado para sincronización: $nombre');
   }
@@ -161,6 +176,9 @@ class SyncService {
           pr['nombre'] as String,
           pr['telefono'] as String,
           pr['finca'] as String,
+          pr['zona'] as String? ?? 'vereda',
+          pr['nombre_zona'] as String? ?? '',
+          pr['lote_vacuna'] as String? ?? '',
           (pr['mascotas'] as List<dynamic>).cast<Map<String, dynamic>>(),
         );
         
@@ -181,7 +199,7 @@ class SyncService {
     }
 
     // Limpiar todos los pendientes y guardar solo los que fallaron
-    await LocalStorageService.clearPendingResponsables();
+      await LocalStorageService.clearPendingResponsables();
     
     if (remaining.isNotEmpty) {
       // Volver a guardar solo los que fallaron
@@ -191,6 +209,9 @@ class SyncService {
           r['nombre'] as String,
           r['telefono'] as String,
           r['finca'] as String,
+          r['zona'] as String? ?? 'vereda',
+          r['nombre_zona'] as String? ?? '',
+          r['lote_vacuna'] as String? ?? '',
           (r['mascotas'] as List<dynamic>).cast<Map<String, dynamic>>(),
         );
       }
