@@ -6,10 +6,11 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import '../models/responsable.dart';
 import '../models/mascota.dart';
 import 'auth_service.dart';
+import 'api_config.dart';
 import 'local_storage_service.dart';
 
 class ResponsableService {
-  static const _base = 'https://vacunacion.corpofuturo.org/api/';
+  static final _base = ApiConfig.apiBase;
 
   // Obtener todos los responsables de una planilla
   static Future<List<Responsable>> fetchResponsables(int planillaId) async {
@@ -45,14 +46,15 @@ class ResponsableService {
       if (connectivity == ConnectivityResult.none) {
         print('❌ Sin conexión - guardando responsable offline');
         await _saveOffline(planillaId, nombre, telefono, finca, zona, nombreZona, loteVacuna, mascotas);
-        throw Exception('Sin conexión a internet');
+        // No lanzar excepción: indicar guardado offline devolviendo null
+        return null;
       }
 
       final t = await AuthService.token;
       if (t == null || t.isEmpty) {
         print('❌ Sin token de autenticación - guardando responsable offline');
         await _saveOffline(planillaId, nombre, telefono, finca, zona, nombreZona, loteVacuna, mascotas);
-        throw Exception('Sin token de autenticación');
+        return null;
       }
 
       print('🔄 Enviando responsable a Django: $nombre');
@@ -119,34 +121,29 @@ class ResponsableService {
         print('❌ Error del servidor Django: ${resp.statusCode}');
         print('❌ Mensaje: ${resp.body}');
         await _saveOffline(planillaId, nombre, telefono, finca, zona, nombreZona, loteVacuna, mascotas);
-        throw Exception('Error del servidor: ${resp.statusCode} - ${resp.body}');
+        // Guardado offline y devolver null para que UI muestre éxito offline
+        return null;
       }
     } catch (e) {
-      // Si es XMLHttpRequest error o problema de red, guardar offline sin mostrar error
-      if (e.toString().contains('XMLHttpRequest error') || 
-          e.toString().contains('TimeoutException') ||
-          e.toString().contains('SocketException')) {
-        
-        print('🌐 Sin conexión a Django. Guardando offline: $nombre');
+      // Errores de red u otros: guardar offline y no lanzar para evitar mostrar error a usuario
+      final message = e.toString();
+      if (message.contains('XMLHttpRequest error') ||
+          message.contains('TimeoutException') ||
+          message.contains('SocketException') ||
+          message.contains('Failed host lookup') ||
+          message.contains('Connection closed')) {
+        print('🌐 Sin conexión a Django (catch). Guardando offline: $nombre');
         await _saveOffline(planillaId, nombre, telefono, finca, zona, nombreZona, loteVacuna, mascotas);
-        
-        // Retornar null para indicar que se guardó offline exitosamente
         return null;
-      } else {
-        // Error real (parsing, servidor, etc.)
-        print('❌ Error real creando responsable: $e');
-        
-        // Solo guardar offline si no es un error de parsing exitoso
-        if (!e.toString().contains('Error parseando respuesta Django')) {
-          await _saveOffline(planillaId, nombre, telefono, finca, zona, nombreZona, loteVacuna, mascotas);
-        }
-        
-        rethrow;
       }
+
+      // Otros errores reales: re-lanzar
+      print('❌ Error real creando responsable: $e');
+      rethrow;
     }
   }
 
-  // Método auxiliar para guardar offline
+  // Método auxiliar para guardar offline (con de-duplicación)
   static Future<void> _saveOffline(
     int planillaId,
     String nombre,
@@ -158,9 +155,21 @@ class ResponsableService {
     List<Map<String, dynamic>> mascotas,
   ) async {
     print('💾 Guardando responsable offline: $nombre');
-        await LocalStorageService.savePendingResponsable(
-          planillaId, nombre, telefono, finca, zona, nombreZona, loteVacuna, mascotas,
-        );
+    // Leer existentes para evitar duplicados del mismo responsable en la misma planilla
+    final existentes = await LocalStorageService.getPendingResponsables();
+    final yaExiste = existentes.any((r) =>
+      r['planillaId'] == planillaId &&
+      (r['nombre'] as String).trim().toLowerCase() == nombre.trim().toLowerCase()
+    );
+
+    if (yaExiste) {
+      print('⚠️ Responsable ya estaba en cola offline: $nombre. No se duplica.');
+      return;
+    }
+
+    await LocalStorageService.savePendingResponsable(
+      planillaId, nombre, telefono, finca, zona, nombreZona, loteVacuna, mascotas,
+    );
   }
 
   // Crear responsable offline (para uso directo)
@@ -175,6 +184,23 @@ class ResponsableService {
     List<Map<String, dynamic>> mascotas,
   ) async {
     await _saveOffline(planillaId, nombre, telefono, finca, zona, nombreZona, loteVacuna, mascotas);
+  }
+
+  // Obtener mascotas de un responsable (lista)
+  static Future<List<Mascota>> fetchMascotasDeResponsable(int responsableId) async {
+    final t = await AuthService.token;
+    final resp = await http.get(
+      Uri.parse('${_base}responsables/$responsableId/mascotas/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Token $t',
+      },
+    );
+    if (resp.statusCode != 200) {
+      throw Exception('Error ${resp.statusCode}');
+    }
+    final data = json.decode(resp.body) as List<dynamic>;
+    return data.map((e) => Mascota.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   // Verificar el estado de la conexión y mostrar información útil

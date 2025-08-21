@@ -9,6 +9,7 @@ class LocalStorageService {
   static const String _userKey = 'user_data';
   static const String _pendingResponsablesKey = 'pending_responsables';
   static const String _planillasKey = 'planillas_data';
+  static const String _zonaDefaultsPrefix = 'zona_defaults_'; // + username
 
   // Guardar token de autenticación
   static Future<void> saveToken(String token) async {
@@ -137,5 +138,44 @@ class LocalStorageService {
     await prefs.remove(_tokenKey); // Solo eliminar token, conservar user_data
     // Las credenciales (_userKey) se mantienen para login offline
     // Los datos de planillas también se mantienen para trabajo offline
+  }
+
+  // =====================
+  // Defaults por vacunador
+  // =====================
+
+  /// Guarda los defaults de zona por usuario
+  static Future<void> saveZonaDefaults({
+    required String username,
+    required String tipoZona,
+    required String nombreZona,
+    required String loteVacuna,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = '$_zonaDefaultsPrefix$username';
+    await prefs.setString(key, json.encode({
+      'tipo_zona': tipoZona,
+      'nombre_zona': nombreZona,
+      'lote_vacuna': loteVacuna,
+      'updated_at': DateTime.now().toIso8601String(),
+    }));
+  }
+
+  /// Obtiene los defaults de zona por usuario
+  static Future<Map<String, String>?> getZonaDefaults(String username) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = '$_zonaDefaultsPrefix$username';
+    final raw = prefs.getString(key);
+    if (raw == null) return null;
+    try {
+      final data = json.decode(raw) as Map<String, dynamic>;
+      return {
+        'tipo_zona': (data['tipo_zona'] as String?) ?? 'vereda',
+        'nombre_zona': (data['nombre_zona'] as String?) ?? '',
+        'lote_vacuna': (data['lote_vacuna'] as String?) ?? '',
+      };
+    } catch (_) {
+      return null;
+    }
   }
 } 

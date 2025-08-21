@@ -9,6 +9,7 @@ import '../services/sync_service.dart';
 import '../services/responsable_service.dart';
 import 'planilla_detail_screen.dart';
 import 'login_screen.dart';
+import 'pending_items_screen.dart';
 
 class PlanillaListScreen extends StatefulWidget {
   @override _PlanillaListScreenState createState() => _PlanillaListScreenState();
@@ -394,6 +395,17 @@ class _PlanillaListScreenState extends State<PlanillaListScreen> {
             icon: Icon(Icons.sync, color: Colors.blue),
             onPressed: _syncPendingData,
             tooltip: 'Sincronizar Pendientes',
+          ),
+          // Botón de items pendientes
+          IconButton(
+            icon: Icon(Icons.pending_actions, color: Colors.orange),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => PendingItemsScreen()),
+              );
+            },
+            tooltip: 'Ver Items Pendientes',
           ),
           // Menú de opciones
           PopupMenuButton<String>(

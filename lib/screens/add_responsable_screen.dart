@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../models/mascota.dart';
 import '../services/responsable_service.dart';
+import '../services/local_storage_service.dart';
+import '../services/auth_service.dart';
 import '../services/sync_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
@@ -41,11 +44,49 @@ class _AddResponsableScreenState extends State<AddResponsableScreen> {
   // Lista de mascotas a agregar
   List<Map<String, dynamic>> _mascotas = [];
   bool _isLoading = false;
+  final stt.SpeechToText _speech = stt.SpeechToText();
+  bool _listening = false;
+  String _speechPrev = '';
+
+  String _dedupeWords(String input, {bool nonAdjacent = false}) {
+    final parts = input.split(RegExp(r'\s+'));
+    final List<String> out = [];
+    final Set<String> seen = <String>{};
+    for (final raw in parts) {
+      final w = raw.trim();
+      if (w.isEmpty) continue;
+      final lower = w.toLowerCase();
+      if (nonAdjacent) {
+        if (seen.contains(lower)) continue;
+        seen.add(lower);
+        out.add(w);
+      } else {
+        if (out.isEmpty || out.last.toLowerCase() != lower) {
+          out.add(w);
+        }
+      }
+    }
+    return out.join(' ');
+  }
 
   @override
   void initState() {
     super.initState();
     _actualizarRazas();
+    _cargarDefaultsZona();
+  }
+
+  Future<void> _cargarDefaultsZona() async {
+    final username = await AuthService.savedUsername;
+    if (username == null) return;
+    final defaults = await LocalStorageService.getZonaDefaults(username);
+    if (defaults != null) {
+      setState(() {
+        _zonaSeleccionada = defaults['tipo_zona'] ?? _zonaSeleccionada;
+        _nombreZonaController.text = defaults['nombre_zona'] ?? _nombreZonaController.text;
+        _loteVacunaController.text = defaults['lote_vacuna'] ?? _loteVacunaController.text;
+      });
+    }
   }
 
   void _actualizarRazas() {
@@ -54,6 +95,60 @@ class _AddResponsableScreenState extends State<AddResponsableScreen> {
       _razaSeleccionada = razas.first;
     }
     setState(() {});
+  }
+
+  Future<void> _toggleDictado(TextEditingController controller) async {
+    if (!_listening) {
+      final available = await _speech.initialize(
+        onStatus: (s) {},
+        onError: (e) {},
+      );
+      if (!available) return;
+      setState(() => _listening = true);
+      _speechPrev = '';
+      await _speech.listen(
+        onResult: (res) {
+          final recognized = res.recognizedWords.trim();
+          if (recognized.isEmpty) return;
+
+          // Calcula solo el delta para evitar repeticiones de parciales
+          String delta;
+          if (recognized.toLowerCase().startsWith(_speechPrev.toLowerCase())) {
+            delta = recognized.substring(_speechPrev.length);
+          } else {
+            // Fallback: si no hay prefijo común, evita duplicar si es igual a lo previo
+            if (recognized.toLowerCase() == _speechPrev.toLowerCase()) {
+              delta = '';
+            } else {
+              delta = recognized;
+            }
+          }
+
+          if (delta.isNotEmpty) {
+            final current = controller.text.trim();
+            final appended = current.isEmpty ? delta : '$current ${delta.trimLeft()}';
+            final newText = _dedupeWords(appended, nonAdjacent: true);
+            controller.text = newText;
+            controller.selection = TextSelection.fromPosition(
+              TextPosition(offset: controller.text.length),
+            );
+          }
+
+          _speechPrev = recognized;
+
+          if (res.finalResult) {
+            _speech.stop();
+            setState(() => _listening = false);
+          }
+        },
+        listenMode: stt.ListenMode.dictation,
+        partialResults: true,
+        localeId: null,
+      );
+    } else {
+      await _speech.stop();
+      setState(() => _listening = false);
+    }
   }
 
   void _agregarMascota() {
@@ -176,6 +271,17 @@ class _AddResponsableScreenState extends State<AddResponsableScreen> {
     setState(() => _isLoading = true);
 
     try {
+      // Guardar defaults inmediatamente (antes o después del envío)
+      final username = await AuthService.savedUsername;
+      if (username != null) {
+        await LocalStorageService.saveZonaDefaults(
+          username: username,
+          tipoZona: _zonaSeleccionada,
+          nombreZona: _nombreZonaController.text.trim(),
+          loteVacuna: _loteVacunaController.text.trim(),
+        );
+      }
+
       final resultado = await ResponsableService.createResponsable(
         widget.planillaId,
         _nombreController.text.trim(),
@@ -196,7 +302,7 @@ class _AddResponsableScreenState extends State<AddResponsableScreen> {
           ),
         );
       } else {
-        // Se guardó offline exitosamente
+        // Se guardó offline exitosamente (sin lanzar excepciones)
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('💾 Guardado offline exitosamente. Sincronice cuando tenga conexión.'),
@@ -250,9 +356,13 @@ class _AddResponsableScreenState extends State<AddResponsableScreen> {
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _nombreController,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'Nombre del Responsable *',
-                          border: OutlineInputBorder(),
+                          border: const OutlineInputBorder(),
+                          suffixIcon: IconButton(
+                            icon: Icon(_listening ? Icons.mic : Icons.mic_none),
+                            onPressed: () => _toggleDictado(_nombreController),
+                          ),
                         ),
                         validator: (value) {
                           if (value?.trim().isEmpty ?? true) {
@@ -264,9 +374,13 @@ class _AddResponsableScreenState extends State<AddResponsableScreen> {
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _telefonoController,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'Teléfono *',
-                          border: OutlineInputBorder(),
+                          border: const OutlineInputBorder(),
+                          suffixIcon: IconButton(
+                            icon: Icon(_listening ? Icons.mic : Icons.mic_none),
+                            onPressed: () => _toggleDictado(_telefonoController),
+                          ),
                         ),
                         keyboardType: TextInputType.phone,
                         validator: (value) {
@@ -279,9 +393,13 @@ class _AddResponsableScreenState extends State<AddResponsableScreen> {
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _fincaController,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'Nombre de la Finca/Establecimiento *',
-                          border: OutlineInputBorder(),
+                          border: const OutlineInputBorder(),
+                          suffixIcon: IconButton(
+                            icon: Icon(_listening ? Icons.mic : Icons.mic_none),
+                            onPressed: () => _toggleDictado(_fincaController),
+                          ),
                         ),
                         validator: (value) {
                           if (value?.trim().isEmpty ?? true) {
@@ -317,10 +435,14 @@ class _AddResponsableScreenState extends State<AddResponsableScreen> {
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _nombreZonaController,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'Nombre de la Zona *',
-                          border: OutlineInputBorder(),
+                          border: const OutlineInputBorder(),
                           hintText: 'Ej: La Esperanza, San Juan, etc.',
+                          suffixIcon: IconButton(
+                            icon: Icon(_listening ? Icons.mic : Icons.mic_none),
+                            onPressed: () => _toggleDictado(_nombreZonaController),
+                          ),
                         ),
                         validator: (value) {
                           if (value?.trim().isEmpty ?? true) {
@@ -332,10 +454,14 @@ class _AddResponsableScreenState extends State<AddResponsableScreen> {
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _loteVacunaController,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'Lote de Vacuna *',
-                          border: OutlineInputBorder(),
+                          border: const OutlineInputBorder(),
                           hintText: 'Ej: LT001, VAC2023-001, etc.',
+                          suffixIcon: IconButton(
+                            icon: Icon(_listening ? Icons.mic : Icons.mic_none),
+                            onPressed: () => _toggleDictado(_loteVacunaController),
+                          ),
                         ),
                         validator: (value) {
                           if (value?.trim().isEmpty ?? true) {

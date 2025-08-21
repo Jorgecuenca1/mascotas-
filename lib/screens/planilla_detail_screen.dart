@@ -188,7 +188,15 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
       child: ExpansionTile(
         leading: const Icon(Icons.person),
         title: Text(responsable.nombre),
-        subtitle: Text('${responsable.finca} - ${responsable.telefono}'),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('${responsable.finca} - ${responsable.telefono}'),
+            const SizedBox(height: 4),
+            Text('Zona: ${responsable.zona} • ${responsable.nombreZona}'),
+            Text('Lote vacuna: ${responsable.loteVacuna}'),
+          ],
+        ),
         children: [
           Padding(
             padding: const EdgeInsets.all(16),
@@ -200,19 +208,77 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
-                ...responsable.mascotas.map((mascota) => ListTile(
-                  leading: Icon(
-                    Icons.pets,
-                    color: mascota.antecedenteVacunal ? Colors.green : Colors.orange,
-                  ),
-                  title: Text(mascota.nombre),
-                  subtitle: Text(
-                    '${mascota.tipo.toUpperCase()} - ${mascota.raza} - ${mascota.color}',
-                  ),
-                  trailing: mascota.antecedenteVacunal
-                      ? const Icon(Icons.vaccines, color: Colors.green)
-                      : const Icon(Icons.warning, color: Colors.orange),
-                )),
+                if (responsable.mascotas.isEmpty)
+                  FutureBuilder<List<Mascota>>(
+                    future: ResponsableService.fetchMascotasDeResponsable(responsable.id),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Padding(
+                          padding: EdgeInsets.all(8.0),
+                          child: CircularProgressIndicator(),
+                        );
+                      }
+                      if (snapshot.hasError) {
+                        return Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: Text('Error cargando mascotas: ${snapshot.error}'),
+                        );
+                      }
+                      final mascotas = snapshot.data ?? const <Mascota>[];
+                      if (mascotas.isEmpty) {
+                        return const Padding(
+                          padding: EdgeInsets.all(8.0),
+                          child: Text('Sin mascotas asociadas'),
+                        );
+                      }
+                      return Column(
+                        children: mascotas.map((mascota) => ListTile(
+                              leading: Icon(
+                                Icons.pets,
+                                color: mascota.antecedenteVacunal ? Colors.green : Colors.orange,
+                              ),
+                              title: Text(mascota.nombre),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('${mascota.tipo.toUpperCase()} - ${mascota.raza} - ${mascota.color}'),
+                                  if (mascota.foto != null)
+                                    const Text('📷 Foto adjunta', style: TextStyle(color: Colors.blue)),
+                                  if (mascota.latitud != null && mascota.longitud != null)
+                                    Text('📍 Lat: ${mascota.latitud!.toStringAsFixed(4)}, Lng: ${mascota.longitud!.toStringAsFixed(4)}',
+                                        style: const TextStyle(color: Colors.green)),
+                                ],
+                              ),
+                              trailing: mascota.antecedenteVacunal
+                                  ? const Icon(Icons.vaccines, color: Colors.green)
+                                  : const Icon(Icons.warning, color: Colors.orange),
+                              isThreeLine: mascota.foto != null || (mascota.latitud != null && mascota.longitud != null),
+                            )).toList(),
+                      );
+                    },
+                  )
+                else
+                  ...responsable.mascotas.map((mascota) => ListTile(
+                      leading: Icon(
+                        Icons.pets,
+                        color: mascota.antecedenteVacunal ? Colors.green : Colors.orange,
+                      ),
+                      title: Text(mascota.nombre),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('${mascota.tipo.toUpperCase()} - ${mascota.raza} - ${mascota.color}'),
+                          if (mascota.foto != null) const Text('📷 Foto adjunta', style: TextStyle(color: Colors.blue)),
+                          if (mascota.latitud != null && mascota.longitud != null)
+                            Text('📍 Lat: ${mascota.latitud!.toStringAsFixed(4)}, Lng: ${mascota.longitud!.toStringAsFixed(4)}',
+                                style: const TextStyle(color: Colors.green)),
+                        ],
+                      ),
+                      trailing: mascota.antecedenteVacunal
+                          ? const Icon(Icons.vaccines, color: Colors.green)
+                          : const Icon(Icons.warning, color: Colors.orange),
+                      isThreeLine: mascota.foto != null || (mascota.latitud != null && mascota.longitud != null),
+                    )),
               ],
             ),
           ),
@@ -229,7 +295,15 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
       child: ExpansionTile(
         leading: const Icon(Icons.person, color: Colors.orange),
         title: Text(responsable['nombre'] ?? ''),
-        subtitle: Text('${responsable['finca'] ?? ''} - ${responsable['telefono'] ?? ''}'),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('${responsable['finca'] ?? ''} - ${responsable['telefono'] ?? ''}'),
+            const SizedBox(height: 4),
+            Text('Zona: ${(responsable['zona'] ?? '')} • ${(responsable['nombre_zona'] ?? '')}'),
+            Text('Lote vacuna: ${(responsable['lote_vacuna'] ?? '')}'),
+          ],
+        ),
         trailing: IconButton(
           icon: const Icon(Icons.delete, color: Colors.red),
           onPressed: () => _removePendingResponsable(index),
@@ -246,18 +320,26 @@ class _PlanillaDetailScreenState extends State<PlanillaDetailScreen> {
                 ),
                 const SizedBox(height: 8),
                 ...mascotas.map((mascota) => ListTile(
-                  leading: Icon(
-                    Icons.pets,
-                    color: (mascota['antecedente_vacunal'] == true) ? Colors.green : Colors.orange,
-                  ),
-                  title: Text(mascota['nombre'] ?? ''),
-                  subtitle: Text(
-                    '${(mascota['tipo'] ?? '').toUpperCase()} - ${mascota['raza'] ?? ''} - ${mascota['color'] ?? ''}',
-                  ),
-                  trailing: (mascota['antecedente_vacunal'] == true)
-                      ? const Icon(Icons.vaccines, color: Colors.green)
-                      : const Icon(Icons.warning, color: Colors.orange),
-                )),
+                      leading: Icon(
+                        Icons.pets,
+                        color: (mascota['antecedente_vacunal'] == true) ? Colors.green : Colors.orange,
+                      ),
+                      title: Text(mascota['nombre'] ?? ''),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('${(mascota['tipo'] ?? '').toUpperCase()} - ${mascota['raza'] ?? ''} - ${mascota['color'] ?? ''}'),
+                          if (mascota['foto'] != null) const Text('📷 Foto capturada', style: TextStyle(color: Colors.blue)),
+                          if (mascota['latitud'] != null && mascota['longitud'] != null)
+                            Text('📍 Lat: ${(mascota['latitud'] as num).toStringAsFixed(4)}, Lng: ${(mascota['longitud'] as num).toStringAsFixed(4)}',
+                                style: const TextStyle(color: Colors.green)),
+                        ],
+                      ),
+                      trailing: (mascota['antecedente_vacunal'] == true)
+                          ? const Icon(Icons.vaccines, color: Colors.green)
+                          : const Icon(Icons.warning, color: Colors.orange),
+                      isThreeLine: mascota['foto'] != null || (mascota['latitud'] != null && mascota['longitud'] != null),
+                    )),
               ],
             ),
           ),

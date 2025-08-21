@@ -1,6 +1,7 @@
 // lib/services/sync_service.dart
 
 import 'dart:convert';
+import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../services/planilla_service.dart';
@@ -11,17 +12,20 @@ import '../services/local_storage_service.dart';
 class PendingMascota {
   final int planId;
   final String nombre;
+  final String timestamp;
 
-  PendingMascota({required this.planId, required this.nombre});
+  PendingMascota({required this.planId, required this.nombre, required this.timestamp});
 
   Map<String, dynamic> toJson() => {
     'planId': planId,
     'nombre': nombre,
+    'timestamp': timestamp,
   };
 
   factory PendingMascota.fromJson(Map<String, dynamic> json) => PendingMascota(
     planId: json['planId'] as int,
     nombre: json['nombre'] as String,
+    timestamp: json['timestamp'] as String? ?? DateTime.now().toIso8601String(),
   );
 }
 
@@ -35,6 +39,7 @@ class PendingResponsable {
   final String nombreZona;
   final String loteVacuna;
   final List<Map<String, dynamic>> mascotas;
+  final String timestamp;
 
   PendingResponsable({
     required this.planillaId,
@@ -45,6 +50,7 @@ class PendingResponsable {
     required this.nombreZona,
     required this.loteVacuna,
     required this.mascotas,
+    required this.timestamp,
   });
 
   Map<String, dynamic> toJson() => {
@@ -56,6 +62,7 @@ class PendingResponsable {
     'nombre_zona': nombreZona,
     'lote_vacuna': loteVacuna,
     'mascotas': mascotas,
+    'timestamp': timestamp,
   };
 
   factory PendingResponsable.fromJson(Map<String, dynamic> json) => PendingResponsable(
@@ -67,6 +74,7 @@ class PendingResponsable {
     nombreZona: json['nombre_zona'] as String? ?? '',
     loteVacuna: json['lote_vacuna'] as String? ?? '',
     mascotas: (json['mascotas'] as List).cast<Map<String, dynamic>>(),
+    timestamp: json['timestamp'] as String? ?? DateTime.now().toIso8601String(),
   );
 }
 
@@ -74,6 +82,9 @@ class SyncService {
   static const _key = 'PENDING_MASCOTAS';
   // Usar la misma clave que LocalStorageService para evitar duplicados
   static const _keyResponsables = 'pending_responsables';
+  static bool _isSyncing = false;
+  static bool _listenerStarted = false;
+  static StreamSubscription<ConnectivityResult>? _connectivitySub;
 
   /// Obtiene el número de items pendientes
   static Future<int> getPendingCount() async {
@@ -85,14 +96,42 @@ class SyncService {
     return responsables.length + mascotas.length;
   }
 
+  /// Obtiene todos los items pendientes para mostrar en historial
+  static Future<Map<String, dynamic>> getPendingItems() async {
+    final responsables = await LocalStorageService.getPendingResponsables();
+    final prefs = await SharedPreferences.getInstance();
+    final mascotasRaw = prefs.getString(_key);
+    final mascotas = mascotasRaw == null ? [] : json.decode(mascotasRaw) as List;
+    
+    return {
+      'responsables': responsables,
+      'mascotas': mascotas,
+      'total': responsables.length + mascotas.length,
+    };
+  }
+
   /// Encola una mascota cuando no hay conexión
   static Future<void> queueMascota(int planId, String nombre) async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_key);
     final list = raw == null ? <dynamic>[] : json.decode(raw) as List<dynamic>;
-    list.add({'planId': planId, 'nombre': nombre, 'timestamp': DateTime.now().toIso8601String()});
-    await prefs.setString(_key, json.encode(list));
-    print('Mascota encolada para sincronización: $nombre');
+    
+    // Verificar si ya existe una mascota con el mismo nombre para la misma planilla
+    final exists = list.any((item) => 
+      item['planId'] == planId && item['nombre'] == nombre
+    );
+    
+    if (!exists) {
+      list.add({
+        'planId': planId, 
+        'nombre': nombre, 
+        'timestamp': DateTime.now().toIso8601String()
+      });
+      await prefs.setString(_key, json.encode(list));
+      print('✅ Mascota encolada para sincronización: $nombre');
+    } else {
+      print('⚠️ Mascota ya existe en la cola: $nombre');
+    }
   }
 
   /// Encola un responsable cuando no hay conexión
@@ -106,11 +145,20 @@ class SyncService {
     String loteVacuna,
     List<Map<String, dynamic>> mascotas,
   ) async {
-    // Usar LocalStorageService para evitar duplicados
-    await LocalStorageService.savePendingResponsable(
-      planillaId, nombre, telefono, finca, zona, nombreZona, loteVacuna, mascotas,
+    // Verificar si ya existe un responsable con el mismo nombre para la misma planilla
+    final existing = await LocalStorageService.getPendingResponsables();
+    final exists = existing.any((item) => 
+      item['planillaId'] == planillaId && item['nombre'] == nombre
     );
-    print('Responsable encolado para sincronización: $nombre');
+    
+    if (!exists) {
+      await LocalStorageService.savePendingResponsable(
+        planillaId, nombre, telefono, finca, zona, nombreZona, loteVacuna, mascotas,
+      );
+      print('✅ Responsable encolado para sincronización: $nombre');
+    } else {
+      print('⚠️ Responsable ya existe en la cola: $nombre');
+    }
   }
 
   /// Intenta enviar todas las mascotas encoladas
@@ -119,17 +167,26 @@ class SyncService {
     final raw = prefs.getString(_key);
     if (raw == null) return {'success': 0, 'failed': 0, 'errors': []};
     
-    final pending = (json.decode(raw) as List<dynamic>)
+    // Desduplicar mascotas por (planId, nombre)
+    final decoded = (json.decode(raw) as List<dynamic>)
         .map((e) => PendingMascota.fromJson(e as Map<String, dynamic>))
         .toList();
+    final Map<String, PendingMascota> unique = {};
+    for (final pm in decoded) {
+      final key = '${pm.planId}::${pm.nombre.trim().toLowerCase()}';
+      unique.putIfAbsent(key, () => pm);
+    }
+    final pending = unique.values.toList();
     
     final List<PendingMascota> remaining = [];
     final List<String> errors = [];
     int successCount = 0;
 
+    print('🔄 Sincronizando ${pending.length} mascotas...');
+
     for (final pm in pending) {
       try {
-        print('Sincronizando mascota: ${pm.nombre} para planilla ${pm.planId}');
+        print('📤 Sincronizando mascota: ${pm.nombre} para planilla ${pm.planId}');
         await PlanillaService.createMascota(pm.planId, pm.nombre);
         successCount++;
         print('✅ Mascota sincronizada exitosamente: ${pm.nombre}');
@@ -143,11 +200,11 @@ class SyncService {
     // Actualizar la lista de pendientes
     if (remaining.isEmpty) {
       await prefs.remove(_key);
-      print('Todas las mascotas fueron sincronizadas');
+      print('🎉 Todas las mascotas fueron sincronizadas');
     } else {
       final remJson = remaining.map((e) => e.toJson()).toList();
       await prefs.setString(_key, json.encode(remJson));
-      print('Quedan ${remaining.length} mascotas pendientes');
+      print('⚠️ Quedan ${remaining.length} mascotas pendientes');
     }
 
     return {
@@ -159,17 +216,26 @@ class SyncService {
 
   /// Intenta enviar todos los responsables encolados
   static Future<Map<String, dynamic>> syncResponsables() async {
-    final pending = await LocalStorageService.getPendingResponsables();
+    final rawPending = await LocalStorageService.getPendingResponsables();
+    // Desduplicar responsables por (planillaId, nombre)
+    final Map<String, Map<String, dynamic>> unique = {};
+    for (final r in rawPending) {
+      final key = '${r['planillaId']}::${(r['nombre'] as String).trim().toLowerCase()}';
+      unique.putIfAbsent(key, () => r);
+    }
+    final pending = unique.values.toList();
     if (pending.isEmpty) return {'success': 0, 'failed': 0, 'errors': []};
 
     final List<Map<String, dynamic>> remaining = [];
     final List<String> errors = [];
     int successCount = 0;
 
+    print('🔄 Sincronizando ${pending.length} responsables...');
+
     for (int i = 0; i < pending.length; i++) {
       final pr = pending[i];
       try {
-        print('Sincronizando responsable: ${pr['nombre']} para planilla ${pr['planillaId']}');
+        print('📤 Sincronizando responsable: ${pr['nombre']} para planilla ${pr['planillaId']}');
         
         final resultado = await ResponsableService.createResponsable(
           pr['planillaId'] as int,
@@ -199,7 +265,7 @@ class SyncService {
     }
 
     // Limpiar todos los pendientes y guardar solo los que fallaron
-      await LocalStorageService.clearPendingResponsables();
+    await LocalStorageService.clearPendingResponsables();
     
     if (remaining.isNotEmpty) {
       // Volver a guardar solo los que fallaron
@@ -215,9 +281,9 @@ class SyncService {
           (r['mascotas'] as List<dynamic>).cast<Map<String, dynamic>>(),
         );
       }
-      print('Quedan ${remaining.length} responsables pendientes');
+      print('⚠️ Quedan ${remaining.length} responsables pendientes');
     } else {
-      print('Todos los responsables fueron sincronizados');
+      print('🎉 Todos los responsables fueron sincronizados');
     }
 
     return {
@@ -229,40 +295,53 @@ class SyncService {
 
   /// Sincroniza todo (mascotas y responsables)
   static Future<Map<String, dynamic>> syncAll() async {
-    print('🔄 Iniciando sincronización completa...');
-    
-    final mascotasResult = await syncMascotas();
-    final responsablesResult = await syncResponsables();
-    
-    final totalSuccess = mascotasResult['success'] + responsablesResult['success'];
-    final totalFailed = mascotasResult['failed'] + responsablesResult['failed'];
-    final allErrors = [
-      ...mascotasResult['errors'] as List<String>,
-      ...responsablesResult['errors'] as List<String>,
-    ];
-    
-    print('✅ Sincronización completa: $totalSuccess exitosos, $totalFailed fallidos');
-    
-    return {
-      'success': totalSuccess,
-      'failed': totalFailed,
-      'errors': allErrors,
-      'mascotas': mascotasResult,
-      'responsables': responsablesResult,
-    };
+    if (_isSyncing) {
+      print('⏳ Sincronización ya en curso. Se omite llamada adicional.');
+      return {'success': 0, 'failed': 0, 'errors': <String>[], 'mascotas': {}, 'responsables': {}};
+    }
+    _isSyncing = true;
+    try {
+      print('🔄 Iniciando sincronización completa...');
+      final mascotasResult = await syncMascotas();
+      final responsablesResult = await syncResponsables();
+      final totalSuccess = (mascotasResult['success'] as int) + (responsablesResult['success'] as int);
+      final totalFailed = (mascotasResult['failed'] as int) + (responsablesResult['failed'] as int);
+      final allErrors = [
+        ...((mascotasResult['errors'] as List?)?.cast<String>() ?? const <String>[]),
+        ...((responsablesResult['errors'] as List?)?.cast<String>() ?? const <String>[]),
+      ];
+      print('✅ Sincronización completa: $totalSuccess exitosos, $totalFailed fallidos');
+      return {
+        'success': totalSuccess,
+        'failed': totalFailed,
+        'errors': allErrors,
+        'mascotas': mascotasResult,
+        'responsables': responsablesResult,
+      };
+    } finally {
+      _isSyncing = false;
+    }
   }
 
   /// Escucha cambios de red y sincroniza automáticamente
   static void startNetworkListener() {
-    Connectivity().onConnectivityChanged.listen((status) async {
+    if (_listenerStarted) return;
+    _listenerStarted = true;
+    _connectivitySub = Connectivity().onConnectivityChanged.listen((status) async {
       if (status != ConnectivityResult.none) {
         print('🌐 Conexión restaurada, iniciando sincronización automática...');
         final result = await syncAll();
-        if (result['success'] > 0) {
+        if ((result['success'] as int?) != null && (result['success'] as int) > 0) {
           print('🎉 Sincronización automática exitosa: ${result['success']} items');
         }
       }
     });
+  }
+
+  static Future<void> stopNetworkListener() async {
+    await _connectivitySub?.cancel();
+    _connectivitySub = null;
+    _listenerStarted = false;
   }
 
   /// Método legacy para compatibilidad

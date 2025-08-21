@@ -4,15 +4,17 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import '../models/planilla.dart';
 import '../models/mascota.dart';
 import 'auth_service.dart';
+import 'api_config.dart';
 import 'local_storage_service.dart';
 
 class PlanillaService {
-  static const _base = 'https://vacunacion.corpofuturo.org/api/';
+  static final _base = ApiConfig.apiBase;
 
   /// Obtiene planillas (online con fallback a offline)
   static Future<List<Planilla>> fetchPlanillas() async {
     try {
       final connectivity = await Connectivity().checkConnectivity();
+      final currentUser = await AuthService.savedUsername;
       
       if (connectivity != ConnectivityResult.none) {
         // Intentar obtener online
@@ -28,7 +30,11 @@ class PlanillaService {
           
           if (resp.statusCode == 200) {
             final data = json.decode(resp.body) as List<dynamic>;
-            final planillas = data.map((e) => Planilla.fromJson(e as Map<String, dynamic>)).toList();
+            var planillas = data.map((e) => Planilla.fromJson(e as Map<String, dynamic>)).toList();
+            // Filtro ESTRICTO: mostrar solo planillas asignadas al usuario logueado
+            if (currentUser != null) {
+              planillas = planillas.where((p) => p.asignadoA == currentUser).toList();
+            }
             
             // Guardar localmente para uso offline
             await _savePlanillasLocally(planillas);
@@ -43,7 +49,11 @@ class PlanillaService {
       }
       
       // Sin conexión, cargar desde almacenamiento local
-      return await _loadPlanillasFromLocal();
+      final local = await _loadPlanillasFromLocal();
+      if (currentUser != null) {
+        return local.where((p) => p.asignadoA == currentUser).toList();
+      }
+      return local;
       
     } catch (e) {
       print('Error general en fetchPlanillas: $e');
