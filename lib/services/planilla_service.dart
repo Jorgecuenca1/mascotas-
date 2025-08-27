@@ -21,7 +21,7 @@ class PlanillaService {
         try {
           final t = await AuthService.token;
           final resp = await http.get(
-            Uri.parse('${_base}planillas/'),
+            Uri.parse('${_base}planillas/'),  // Mantener el endpoint actual que ya funciona
             headers: {
               'Content-Type': 'application/json',
               'Authorization': 'Token $t',
@@ -31,10 +31,8 @@ class PlanillaService {
           if (resp.statusCode == 200) {
             final data = json.decode(resp.body) as List<dynamic>;
             var planillas = data.map((e) => Planilla.fromJson(e as Map<String, dynamic>)).toList();
-            // Filtro ESTRICTO: mostrar solo planillas asignadas al usuario logueado
-            if (currentUser != null) {
-              planillas = planillas.where((p) => p.asignadoA == currentUser).toList();
-            }
+            // La API ya filtra automáticamente por usuario y por created_by
+            // Solo mostrará municipios asignados al usuario y responsables creados por él
             
             // Guardar localmente para uso offline
             await _savePlanillasLocally(planillas);
@@ -49,11 +47,8 @@ class PlanillaService {
       }
       
       // Sin conexión, cargar desde almacenamiento local
-      final local = await _loadPlanillasFromLocal();
-      if (currentUser != null) {
-        return local.where((p) => p.asignadoA == currentUser).toList();
-      }
-      return local;
+      // Los datos locales ya están filtrados cuando se guardaron
+      return await _loadPlanillasFromLocal();
       
     } catch (e) {
       print('Error general en fetchPlanillas: $e');
@@ -275,7 +270,7 @@ class PlanillaService {
         final samplePlanillas = [
           {
             'id': 1,
-            'nombre': 'Planilla Centro - Enero 2024',
+            'nombre': 'Municipio Centro - Enero 2024',
             'creada': DateTime.now().subtract(Duration(days: 5)).toIso8601String(),
             'responsables': [
               {
@@ -330,7 +325,7 @@ class PlanillaService {
           },
           {
             'id': 2,
-            'nombre': 'Planilla Norte - Enero 2024',
+            'nombre': 'Municipio Norte - Enero 2024',
             'creada': DateTime.now().subtract(Duration(days: 3)).toIso8601String(),
             'responsables': [
               {

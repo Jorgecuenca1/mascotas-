@@ -72,8 +72,8 @@ class _PlanillaListScreenState extends State<PlanillaListScreen> {
         _loading = false;
         if (planillas.isEmpty) {
           _errorMessage = _isOnline 
-            ? 'No hay planillas disponibles en el servidor.'
-            : 'Sin conexión y no hay datos guardados. Conéctate a internet para descargar las planillas.';
+            ? 'No hay municipios disponibles en el servidor.'
+            : 'Sin conexión y no hay datos guardados. Conéctate a internet para descargar los municipios.';
         }
       });
       
@@ -357,7 +357,7 @@ class _PlanillaListScreenState extends State<PlanillaListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Mis Planillas'),
+        title: Text('Mis Municipios'),
         actions: [
           // Indicador de conexión
           GestureDetector(
@@ -496,7 +496,7 @@ class _PlanillaListScreenState extends State<PlanillaListScreen> {
           children: [
             CircularProgressIndicator(),
             SizedBox(height: 16),
-            Text('Cargando planillas...'),
+            Text('Cargando municipios...'),
           ],
         ),
       );
@@ -543,7 +543,7 @@ class _PlanillaListScreenState extends State<PlanillaListScreen> {
             ),
             SizedBox(height: 16),
             Text(
-              'No hay planillas disponibles',
+              'No hay municipios disponibles',
               style: TextStyle(fontSize: 16),
             ),
             SizedBox(height: 16),
