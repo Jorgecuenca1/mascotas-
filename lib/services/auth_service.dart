@@ -30,13 +30,16 @@ class AuthService {
           print('📡 Respuesta del servidor: ${resp.statusCode} - ${resp.body}');
           
           if (resp.statusCode == 200) {
-            final token = json.decode(resp.body)['token'] as String;
+            final data = json.decode(resp.body);
+            final token = data['token'] as String;
+            final userType = data['user_type'] ?? 'vacunador'; // Tipo de usuario del backend
             await LocalStorageService.saveToken(token);
-            await LocalStorageService.saveUserData(user, pass);
+            await LocalStorageService.saveUserData(user, pass, userType: userType);
             return {
               'success': true,
               'mode': 'online',
-              'message': 'Login exitoso (online)'
+              'message': 'Login exitoso (online)',
+              'user_type': userType
             };
           } else {
             print('❌ Error del servidor: ${resp.statusCode}');
@@ -84,11 +87,12 @@ class AuthService {
     if (user == 'admin' && pass == 'admin') {
       print('✅ Login offline con credenciales por defecto');
       // Guardar las credenciales por defecto para uso futuro
-      await LocalStorageService.saveUserData(user, pass);
+      await LocalStorageService.saveUserData(user, pass, userType: 'administrador');
       return {
         'success': true,
         'mode': 'offline',
-        'message': 'Login exitoso (modo offline con credenciales por defecto)'
+        'message': 'Login exitoso (modo offline con credenciales por defecto)',
+        'user_type': 'administrador'
       };
     }
     
@@ -171,6 +175,12 @@ class AuthService {
   static Future<String?> get savedUsername async {
     final storedData = await LocalStorageService.getUserData();
     return storedData?['username'];
+  }
+
+  /// Obtiene el tipo de usuario guardado
+  static Future<String> get userType async {
+    final storedData = await LocalStorageService.getUserData();
+    return storedData?['user_type'] ?? 'vacunador';
   }
 
   /// Verifica si hay una sesión activa

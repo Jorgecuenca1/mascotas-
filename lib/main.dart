@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'screens/login_screen.dart';
 import 'screens/planilla_list_screen.dart';
 import 'services/auth_service.dart';
+import 'services/perdidas_sync_service.dart';
 
 void main() => runApp(const MascotasApp());
 
@@ -35,6 +36,11 @@ class _SplashScreenState extends State<SplashScreen> {
     await Future.delayed(Duration(milliseconds: 500));
     
     final isLoggedIn = await AuthService.isLoggedIn();
+    
+    // Iniciar servicio de sincronización si está logueado
+    if (isLoggedIn) {
+      PerdidasSyncService().startAutoSync();
+    }
     
     if (mounted) {
       Navigator.pushReplacement(

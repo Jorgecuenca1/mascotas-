@@ -24,11 +24,12 @@ class LocalStorageService {
   }
 
   // Guardar datos del usuario
-  static Future<void> saveUserData(String username, String password) async {
+  static Future<void> saveUserData(String username, String password, {String? userType}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_userKey, json.encode({
       'username': username,
       'password': password,
+      'user_type': userType ?? 'vacunador',
     }));
   }
 

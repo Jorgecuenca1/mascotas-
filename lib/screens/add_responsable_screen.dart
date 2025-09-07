@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:geolocator/geolocator.dart';
 import '../models/mascota.dart';
 import '../services/responsable_service.dart';
 import '../services/local_storage_service.dart';
@@ -36,6 +37,7 @@ class _AddResponsableScreenState extends State<AddResponsableScreen> {
   String _razaSeleccionada = 'M';
   final _colorController = TextEditingController();
   bool _antecedenteVacunal = false;
+  bool _esterilizado = false;
   String? _fotoBase64;
   double? _latitud;
   double? _longitud;
@@ -151,12 +153,42 @@ class _AddResponsableScreenState extends State<AddResponsableScreen> {
     }
   }
 
-  void _agregarMascota() {
+  void _agregarMascota() async {
     if (_mascotaNombreController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ingrese el nombre de la mascota')),
       );
       return;
+    }
+
+    // Si no hay ubicación, obtenerla automáticamente
+    double? latitudFinal = _latitud;
+    double? longitudFinal = _longitud;
+    
+    if (latitudFinal == null || longitudFinal == null) {
+      try {
+        // Intentar obtener ubicación automáticamente
+        bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+        if (serviceEnabled) {
+          LocationPermission permission = await Geolocator.checkPermission();
+          if (permission == LocationPermission.denied) {
+            permission = await Geolocator.requestPermission();
+          }
+          
+          if (permission == LocationPermission.always || 
+              permission == LocationPermission.whileInUse) {
+            Position position = await Geolocator.getCurrentPosition(
+              desiredAccuracy: LocationAccuracy.high,
+            );
+            // Usar 6 decimales de precisión
+            latitudFinal = double.parse(position.latitude.toStringAsFixed(6));
+            longitudFinal = double.parse(position.longitude.toStringAsFixed(6));
+            print('Ubicación obtenida automáticamente: $latitudFinal, $longitudFinal');
+          }
+        }
+      } catch (e) {
+        print('No se pudo obtener ubicación automática: $e');
+      }
     }
 
     final mascota = {
@@ -165,9 +197,10 @@ class _AddResponsableScreenState extends State<AddResponsableScreen> {
       'raza': _razaSeleccionada,
       'color': _colorController.text.trim(),
       'antecedente_vacunal': _antecedenteVacunal,
+      'esterilizado': _esterilizado,
       if (_fotoBase64 != null) 'foto': _fotoBase64,
-      if (_latitud != null) 'latitud': _latitud,
-      if (_longitud != null) 'longitud': _longitud,
+      if (latitudFinal != null) 'latitud': latitudFinal,
+      if (longitudFinal != null) 'longitud': longitudFinal,
     };
 
     setState(() {
@@ -175,13 +208,19 @@ class _AddResponsableScreenState extends State<AddResponsableScreen> {
       _mascotaNombreController.clear();
       _colorController.clear();
       _antecedenteVacunal = false;
+      _esterilizado = false;
       _fotoBase64 = null;
       _latitud = null;
       _longitud = null;
     });
 
+    String mensaje = 'Mascota agregada a la lista';
+    if (latitudFinal != null && longitudFinal != null && _latitud == null) {
+      mensaje += ' (con ubicación automática)';
+    }
+    
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Mascota agregada a la lista')),
+      SnackBar(content: Text(mensaje)),
     );
   }
 
@@ -221,12 +260,51 @@ class _AddResponsableScreenState extends State<AddResponsableScreen> {
 
   void _obtenerUbicacion() async {
     try {
-      // Simulamos obtener ubicación (puedes integrar geolocator después)
-      await Future.delayed(const Duration(seconds: 1));
-      
-      // Coordenadas de ejemplo (Lima, Perú) con variación
-      final lat = -12.0464 + (DateTime.now().millisecondsSinceEpoch % 1000) / 10000;
-      final lng = -77.0428 + (DateTime.now().millisecondsSinceEpoch % 1000) / 10000;
+      // Verificar permisos primero
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ Por favor, activa los servicios de ubicación'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('⚠️ Permisos de ubicación denegados'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ Los permisos de ubicación están permanentemente denegados'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Obtener la posición actual con alta precisión
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
+      );
+
+      // Redondear a 6 decimales
+      double lat = double.parse(position.latitude.toStringAsFixed(6));
+      double lng = double.parse(position.longitude.toStringAsFixed(6));
       
       setState(() {
         _latitud = lat;
@@ -234,8 +312,8 @@ class _AddResponsableScreenState extends State<AddResponsableScreen> {
       });
       
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('📍 Ubicación obtenida'),
+        SnackBar(
+          content: Text('📍 Ubicación obtenida: $lat, $lng'),
           backgroundColor: Colors.green,
         ),
       );
@@ -577,6 +655,16 @@ class _AddResponsableScreenState extends State<AddResponsableScreen> {
                         onChanged: (value) {
                           setState(() {
                             _antecedenteVacunal = value ?? false;
+                          });
+                        },
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
+                      CheckboxListTile(
+                        title: const Text('Esterilizado'),
+                        value: _esterilizado,
+                        onChanged: (value) {
+                          setState(() {
+                            _esterilizado = value ?? false;
                           });
                         },
                         controlAffinity: ListTileControlAffinity.leading,

@@ -2,7 +2,7 @@ class ApiConfig {
   // Raíz del backend, por ejemplo: http://localhost:8000/
   static const String root = String.fromEnvironment(
     'API_ROOT',
-    defaultValue: 'http://127.0.0.1:8000/',  // Cambiado a localhost para pruebas
+    defaultValue: 'http://127.0.0.1:8000/',  // URL del servidor local para pruebas
   );
 
   // Base API, por ejemplo: http://localhost:8000/api/

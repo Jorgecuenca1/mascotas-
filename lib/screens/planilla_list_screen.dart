@@ -10,6 +10,9 @@ import '../services/responsable_service.dart';
 import 'planilla_detail_screen.dart';
 import 'login_screen.dart';
 import 'pending_items_screen.dart';
+import 'statistics_screen.dart';
+import 'registro_perdidas_screen.dart';
+import 'listado_perdidas_screen.dart';
 
 class PlanillaListScreen extends StatefulWidget {
   @override _PlanillaListScreenState createState() => _PlanillaListScreenState();
@@ -20,6 +23,7 @@ class _PlanillaListScreenState extends State<PlanillaListScreen> {
   bool _loading = true;
   bool _isOnline = true;
   String? _username;
+  String? _userType;
   String? _errorMessage;
 
   @override
@@ -49,8 +53,10 @@ class _PlanillaListScreenState extends State<PlanillaListScreen> {
 
   Future<void> _loadUsername() async {
     final username = await AuthService.savedUsername;
+    final userType = await AuthService.userType;
     setState(() {
       _username = username;
+      _userType = userType;
     });
   }
 
@@ -357,7 +363,11 @@ class _PlanillaListScreenState extends State<PlanillaListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Mis Municipios'),
+        title: Text(_userType == 'administrador' 
+          ? 'Todos los Municipios (Admin)'
+          : _userType == 'tecnico'
+            ? 'Municipios - Técnico'
+            : 'Mis Municipios'),
         actions: [
           // Indicador de conexión
           GestureDetector(
@@ -384,19 +394,31 @@ class _PlanillaListScreenState extends State<PlanillaListScreen> {
               ),
             ),
           ),
-          // Botón de actualizar
+          // Botón de estadísticas - solo para técnicos y administradores
+          if (_userType == 'tecnico' || _userType == 'administrador') 
+            IconButton(
+              icon: Icon(Icons.bar_chart, color: Colors.green),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => StatisticsScreen()),
+                );
+              },
+              tooltip: 'Ver Estadísticas',
+            ),
+          // Botón de actualizar - para todos
           IconButton(
             icon: Icon(Icons.refresh),
             onPressed: _loadPlanillas,
             tooltip: 'Actualizar',
           ),
-          // Botón de sincronización
+          // Botón de sincronización - para todos
           IconButton(
             icon: Icon(Icons.sync, color: Colors.blue),
             onPressed: _syncPendingData,
             tooltip: 'Sincronizar Pendientes',
           ),
-          // Botón de items pendientes
+          // Botón de items pendientes - para todos
           IconButton(
             icon: Icon(Icons.pending_actions, color: Colors.orange),
             onPressed: () {
@@ -407,7 +429,7 @@ class _PlanillaListScreenState extends State<PlanillaListScreen> {
             },
             tooltip: 'Ver Items Pendientes',
           ),
-          // Menú de opciones
+          // Menú de opciones - Solo mostrar cerrar sesión para vacunadores
           PopupMenuButton<String>(
             icon: Icon(Icons.more_vert),
             onSelected: (value) {
@@ -427,60 +449,120 @@ class _PlanillaListScreenState extends State<PlanillaListScreen> {
                 case 'info':
                   _showConnectionInfo();
                   break;
+                case 'registro_perdidas':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => ListadoPerdidasScreen()),
+                  );
+                  break;
               }
             },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'logout',
-                child: Row(
-                  children: [
-                    Icon(Icons.exit_to_app, color: Colors.orange),
-                    SizedBox(width: 8),
-                    Text('Cerrar Sesión'),
-                  ],
+            itemBuilder: (context) {
+              List<PopupMenuItem<String>> menuItems = [
+                // Cerrar sesión para todos
+                PopupMenuItem(
+                  value: 'logout',
+                  child: Row(
+                    children: [
+                      Icon(Icons.exit_to_app, color: Colors.orange),
+                      SizedBox(width: 8),
+                      Text('Cerrar Sesión'),
+                    ],
+                  ),
                 ),
-              ),
-              PopupMenuItem(
-                value: 'logout_complete',
-                child: Row(
-                  children: [
-                    Icon(Icons.delete_forever, color: Colors.red),
-                    SizedBox(width: 8),
-                    Text('Borrar Todo', style: TextStyle(color: Colors.red)),
-                  ],
+                // Info de conexión para todos
+                PopupMenuItem(
+                  value: 'info',
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline),
+                      SizedBox(width: 8),
+                      Text('Info de Conexión'),
+                    ],
+                  ),
                 ),
-              ),
-              PopupMenuItem(
-                value: 'init_sample',
-                child: Row(
-                  children: [
-                    Icon(Icons.data_array, color: Colors.blue),
-                    SizedBox(width: 8),
-                    Text('Cargar Datos de Prueba'),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'test_connection',
-                child: Row(
-                  children: [
-                    Icon(Icons.network_check, color: Colors.green),
-                    SizedBox(width: 8),
-                    Text('Probar Django'),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'info',
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline),
-                    SizedBox(width: 8),
-                    Text('Info de Conexión'),
-                  ],
-                ),
-              ),
-            ],
+              ];
+              
+              // Opciones adicionales solo para administradores
+              if (_userType == 'administrador') {
+                menuItems.addAll([
+                  PopupMenuItem(
+                    value: 'logout_complete',
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete_forever, color: Colors.red),
+                        SizedBox(width: 8),
+                        Text('Borrar Todo', style: TextStyle(color: Colors.red)),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'init_sample',
+                    child: Row(
+                      children: [
+                        Icon(Icons.data_array, color: Colors.blue),
+                        SizedBox(width: 8),
+                        Text('Cargar Datos de Prueba'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'test_connection',
+                    child: Row(
+                      children: [
+                        Icon(Icons.network_check, color: Colors.green),
+                        SizedBox(width: 8),
+                        Text('Probar Django'),
+                      ],
+                    ),
+                  ),
+                ]);
+              }
+              
+              // Opciones para vacunadores - agregar Registro de Pérdidas
+              if (_userType == 'vacunador') {
+                menuItems.add(
+                  PopupMenuItem(
+                    value: 'registro_perdidas',
+                    child: Row(
+                      children: [
+                        Icon(Icons.warning, color: Colors.orange),
+                        SizedBox(width: 8),
+                        Text('Registro de Pérdidas'),
+                      ],
+                    ),
+                  ),
+                );
+              }
+              
+              // Opciones para técnicos (pueden tener opciones adicionales aquí si es necesario)
+              if (_userType == 'tecnico') {
+                menuItems.addAll([
+                  PopupMenuItem(
+                    value: 'registro_perdidas',
+                    child: Row(
+                      children: [
+                        Icon(Icons.warning, color: Colors.orange),
+                        SizedBox(width: 8),
+                        Text('Registro de Pérdidas'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'test_connection',
+                    child: Row(
+                      children: [
+                        Icon(Icons.network_check, color: Colors.green),
+                        SizedBox(width: 8),
+                        Text('Probar Django'),
+                      ],
+                    ),
+                  ),
+                ]);
+              }
+              
+              return menuItems;
+            },
           ),
         ],
       ),
